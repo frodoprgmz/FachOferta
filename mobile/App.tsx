@@ -13,8 +13,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
+import { WebView } from 'react-native-webview';
 import { EstimateItem, EstimateData, Contractor } from './types';
-import { generateAndSharePDF } from './utils/pdfGenerator';
+import { generateAndSharePDF, getEstimateHTML } from './utils/pdfGenerator';
 import { saveEstimate, getSavedEstimates, deleteEstimate } from './utils/storage';
 
 const CONTRACTOR_STORAGE_KEY = '@fach_oferta_contractor';
@@ -43,6 +44,11 @@ export default function App() {
 
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [history, setHistory] = useState<EstimateData[]>([]);
+
+  // Stan dla podglądu PDF
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [currentEstimateData, setCurrentEstimateData] = useState<EstimateData | null>(null);
 
   useEffect(() => {
     loadContractorData();
@@ -139,26 +145,26 @@ export default function App() {
 
   const totalNet = items.reduce((sum, item) => sum + item.totalNet, 0);
 
-  const handleGeneratePDF = async () => {
+  const buildEstimateData = (): EstimateData | null => {
     if (!contractor.companyName) {
       Alert.alert('Brak danych firmy', 'Uzupełnij najpierw dane swojej firmy w zakładce "⚙️ Dane".', [
         { text: 'Otwórz Ustawienia', onPress: () => setIsSettingsOpen(true) },
         { text: 'Anuluj', style: 'cancel' },
       ]);
-      return;
+      return null;
     }
 
     if (!clientName) {
       Alert.alert('Brak danych', 'Podaj imię i nazwisko klienta');
-      return;
+      return null;
     }
 
     if (items.length === 0) {
       Alert.alert('Pusta wycena', 'Dodaj co najmniej jedną pozycję do kosztorysu');
-      return;
+      return null;
     }
 
-    const estimateData: EstimateData = {
+    return {
       estimateNumber: `WYC/${new Date().getFullYear()}/${Math.floor(100 + Math.random() * 900)}`,
       issueDate: new Date().toLocaleDateString('pl-PL'),
       validUntil: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString('pl-PL'),
@@ -171,9 +177,36 @@ export default function App() {
       items,
       advancePercent: parseFloat(advancePercent) || 0,
     };
+  };
 
-    await saveEstimate(estimateData);
-    await generateAndSharePDF(estimateData);
+  const handlePreviewPDF = () => {
+    const data = buildEstimateData();
+    if (!data) return;
+
+    setCurrentEstimateData(data);
+    setPreviewHtml(getEstimateHTML(data));
+    setIsPreviewOpen(true);
+  };
+
+  const handleGeneratePDF = async () => {
+    const data = buildEstimateData();
+    if (!data) return;
+
+    await saveEstimate(data);
+    await generateAndSharePDF(data);
+
+    setClientName('');
+    setClientPhone('');
+    setClientAddress('');
+    setItems([]);
+  };
+
+  const handleSendFromPreview = async () => {
+    if (!currentEstimateData) return;
+
+    setIsPreviewOpen(false);
+    await saveEstimate(currentEstimateData);
+    await generateAndSharePDF(currentEstimateData);
 
     setClientName('');
     setClientPhone('');
@@ -297,10 +330,42 @@ export default function App() {
           </View>
         )}
 
-        <TouchableOpacity style={styles.generateButton} onPress={handleGeneratePDF}>
-          <Text style={styles.generateButtonText}>🚀 Wygeneruj i Wyślij PDF</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 40 }}>
+          <TouchableOpacity
+            style={[styles.generateButton, { flex: 1, backgroundColor: '#3b82f6' }]}
+            onPress={handlePreviewPDF}
+          >
+            <Text style={styles.generateButtonText}>👁️ Podgląd</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.generateButton, { flex: 1.5, backgroundColor: '#16a34a' }]}
+            onPress={handleGeneratePDF}
+          >
+            <Text style={styles.generateButtonText}>🚀 Wyślij PDF</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
+
+      {/* MODAL PODGLĄDU DOKUMENTU */}
+      <Modal visible={isPreviewOpen} animationType="slide">
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }}>
+          <View style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontWeight: 'bold', fontSize: 16 }}>Podgląd Dokumentu</Text>
+            <TouchableOpacity onPress={() => setIsPreviewOpen(false)} style={{ padding: 6 }}>
+              <Text style={{ color: '#ef4444', fontWeight: 'bold', fontSize: 16 }}>Zamknij</Text>
+            </TouchableOpacity>
+          </View>
+
+          <WebView originWhitelist={['*']} source={{ html: previewHtml }} style={{ flex: 1 }} />
+
+          <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: '#e2e8f0' }}>
+            <TouchableOpacity style={styles.saveBtn} onPress={handleSendFromPreview}>
+              <Text style={styles.saveBtnText}>🚀 Zapisz i Wyślij PDF</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
 
       {/* MODAL HISTORII WYCEN */}
       <Modal visible={isHistoryOpen} animationType="slide">
@@ -329,7 +394,7 @@ export default function App() {
                       </View>
                       <Text style={{ fontSize: 15, fontWeight: '600', color: '#0f172a' }}>{est.client.name}</Text>
                       <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>{est.client.address || 'Brak adresu'}</Text>
-                      
+
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 10 }}>
                         <Text style={{ fontWeight: 'bold', fontSize: 15 }}>{estTotal.toFixed(2)} PLN brutto</Text>
                         <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -511,19 +576,16 @@ const styles = StyleSheet.create({
   summaryText: { fontSize: 13, color: '#475569' },
   summaryTextBold: { fontSize: 15, fontWeight: 'bold', color: '#0f172a', marginTop: 4 },
   generateButton: {
-    backgroundColor: '#16a34a',
-    padding: 16,
+    padding: 14,
     borderRadius: 12,
     alignItems: 'center',
-    marginBottom: 40,
   },
-  generateButtonText: { color: '#ffffff', fontWeight: 'bold', fontSize: 16 },
+  generateButtonText: { color: '#ffffff', fontWeight: 'bold', fontSize: 15 },
   saveBtn: {
     backgroundColor: '#16a34a',
     padding: 14,
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 10,
   },
   saveBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 15 },
   cancelBtn: {
