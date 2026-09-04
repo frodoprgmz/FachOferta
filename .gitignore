@@ -1,0 +1,23 @@
+# Node modules
+node_modules/
+.npm
+.yarn/
+
+# Expo / React Native
+.expo/
+dist/
+web-build/
+*.orig.*
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# MacOS / OS System files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
