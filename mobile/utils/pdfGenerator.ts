@@ -31,7 +31,9 @@ export const generateAndSharePDF = async (data: EstimateData) => {
       <meta charset="UTF-8">
       <style>
         body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 30px; color: #1e293b; font-size: 13px; }
-        .header { display: flex; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 15px; margin-bottom: 25px; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 15px; margin-bottom: 25px; }
+        .company-info { display: flex; align-items: center; gap: 15px; }
+        .company-logo { max-height: 60px; max-width: 120px; object-fit: contain; }
         .badge { background: #eff6ff; color: #2563eb; padding: 6px 12px; border-radius: 4px; font-weight: bold; font-size: 15px; text-align: right; }
         .grid { display: flex; justify-content: space-between; margin-bottom: 25px; }
         .box { width: 47%; background: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0; }
@@ -47,17 +49,20 @@ export const generateAndSharePDF = async (data: EstimateData) => {
     </head>
     <body>
       <div class="header">
-  <div>
-    <div style="font-size: 20px; font-weight: bold; text-transform: uppercase;">${data.contractor.companyName}</div>
-    ${data.contractor.nip ? `<div style="color: #64748b; font-size: 11px;">NIP: ${data.contractor.nip}</div>` : ''}
-    <div style="color: #64748b; font-size: 11px;">Tel: ${data.contractor.phone} | Email: ${data.contractor.email}</div>
-    <div style="color: #64748b; font-size: 11px;">Konto: ${data.contractor.bankAccount}</div>
-  </div>
-  <div>
-    <div class="badge">WYCENA: ${data.estimateNumber}</div>
-    <div style="text-align: right; font-size: 11px; color: #64748b; margin-top: 5px;">Data: ${data.issueDate}</div>
-  </div>
-</div>
+        <div class="company-info">
+          ${data.contractor.logoBase64 ? `<img src="${data.contractor.logoBase64}" class="company-logo" />` : ''}
+          <div>
+            <div style="font-size: 18px; font-weight: bold; text-transform: uppercase;">${data.contractor.companyName}</div>
+            ${data.contractor.nip ? `<div style="color: #64748b; font-size: 11px;">NIP: ${data.contractor.nip}</div>` : ''}
+            <div style="color: #64748b; font-size: 11px;">Tel: ${data.contractor.phone} | Email: ${data.contractor.email}</div>
+            <div style="color: #64748b; font-size: 11px;">Konto: ${data.contractor.bankAccount}</div>
+          </div>
+        </div>
+        <div>
+          <div class="badge">WYCENA: ${data.estimateNumber}</div>
+          <div style="text-align: right; font-size: 11px; color: #64748b; margin-top: 5px;">Data: ${data.issueDate}</div>
+        </div>
+      </div>
 
       <div class="grid">
         <div class="box">
@@ -107,7 +112,6 @@ export const generateAndSharePDF = async (data: EstimateData) => {
   `;
 
   try {
-    // 1. Generujemy PDF w postaci ciągu Base64
     const { base64 } = await Print.printToFileAsync({
       html: htmlContent,
       base64: true,
@@ -117,16 +121,13 @@ export const generateAndSharePDF = async (data: EstimateData) => {
       throw new Error('Nie udało się uzyskać danych pliku PDF');
     }
 
-    // 2. Tworzymy nową ścieżkę w folderze dokumentów aplikacji
     const safeDocName = data.estimateNumber.replace(/[\/\\?%*:|"<>]/g, '_');
     const pdfPath = `${FileSystem.documentDirectory}${safeDocName}.pdf`;
 
-    // 3. Zapisujemy dane bezpośrednio do pliku
     await FileSystem.writeAsStringAsync(pdfPath, base64, {
       encoding: FileSystem.EncodingType.Base64,
     });
 
-    // 4. Otwieramy natywne menu udostępniania
     if (await Sharing.isAvailableAsync()) {
       await Sharing.shareAsync(pdfPath, {
         UTI: '.pdf',

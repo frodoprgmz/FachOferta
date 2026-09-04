@@ -4,6 +4,7 @@ export interface Contractor {
   email: string;
   bankAccount: string;
   nip?: string;
+  logoBase64?: string;
 }
 
 export interface Client {

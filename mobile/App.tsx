@@ -8,9 +8,11 @@ import {
   ScrollView,
   Alert,
   Modal,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 import { EstimateItem, EstimateData, Contractor } from './types';
 import { generateAndSharePDF } from './utils/pdfGenerator';
 import { saveEstimate, getSavedEstimates, deleteEstimate } from './utils/storage';
@@ -18,12 +20,10 @@ import { saveEstimate, getSavedEstimates, deleteEstimate } from './utils/storage
 const CONTRACTOR_STORAGE_KEY = '@fach_oferta_contractor';
 
 export default function App() {
-  // Dane Klienta
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [clientAddress, setClientAddress] = useState('');
 
-  // Dane Usługi
   const [items, setItems] = useState<EstimateItem[]>([]);
   const [itemName, setItemName] = useState('');
   const [itemUnit, setItemUnit] = useState('m2');
@@ -31,7 +31,6 @@ export default function App() {
   const [itemPrice, setItemPrice] = useState('');
   const [advancePercent, setAdvancePercent] = useState('30');
 
-  // Modal Ustawień Wykonawcy
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [contractor, setContractor] = useState<Contractor>({
     companyName: '',
@@ -39,9 +38,9 @@ export default function App() {
     email: '',
     bankAccount: '',
     nip: '',
+    logoBase64: '',
   });
 
-  // Modal Historii Wycen
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [history, setHistory] = useState<EstimateData[]>([]);
 
@@ -69,6 +68,25 @@ export default function App() {
       console.error('Błąd zapisu danych firmy:', e);
       Alert.alert('Błąd', 'Nie udało się zapisać danych.');
     }
+  };
+
+  const pickLogo = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.4,
+      base64: true,
+    });
+
+    if (!result.canceled && result.assets[0].base64) {
+      const mimeType = result.assets[0].mimeType || 'image/png';
+      const base64Image = `data:${mimeType};base64,${result.assets[0].base64}`;
+      setContractor({ ...contractor, logoBase64: base64Image });
+    }
+  };
+
+  const removeLogo = () => {
+    setContractor({ ...contractor, logoBase64: '' });
   };
 
   const openHistory = async () => {
@@ -123,7 +141,7 @@ export default function App() {
 
   const handleGeneratePDF = async () => {
     if (!contractor.companyName) {
-      Alert.alert('Brak danych firmy', 'Uzupełnij najpierw dane swojej firmy w zakładce "⚙️ Moje Dane".', [
+      Alert.alert('Brak danych firmy', 'Uzupełnij najpierw dane swojej firmy w zakładce "⚙️ Dane".', [
         { text: 'Otwórz Ustawienia', onPress: () => setIsSettingsOpen(true) },
         { text: 'Anuluj', style: 'cancel' },
       ]);
@@ -154,13 +172,9 @@ export default function App() {
       advancePercent: parseFloat(advancePercent) || 0,
     };
 
-    // Auto-zapis do pamięci urządzenia
     await saveEstimate(estimateData);
-
-    // Generowanie i udostępnienie PDF
     await generateAndSharePDF(estimateData);
 
-    // Czyszczenie formularza po sukcesie
     setClientName('');
     setClientPhone('');
     setClientAddress('');
@@ -353,6 +367,23 @@ export default function App() {
               Te dane będą automatycznie trafiać na każdy wygenerowany dokument PDF.
             </Text>
 
+            <Text style={styles.label}>Logo Firmy</Text>
+            {contractor.logoBase64 ? (
+              <View style={{ alignItems: 'center', marginVertical: 10 }}>
+                <Image
+                  source={{ uri: contractor.logoBase64 }}
+                  style={{ width: 120, height: 60, resizeMode: 'contain', marginBottom: 8 }}
+                />
+                <TouchableOpacity onPress={removeLogo}>
+                  <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: 'bold' }}>Usuń logo</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.logoBtn} onPress={pickLogo}>
+                <Text style={styles.logoBtnText}>📷 Wybierz logo z galerii</Text>
+              </TouchableOpacity>
+            )}
+
             <Text style={styles.label}>Nazwa Firmy / Imię i Nazwisko *</Text>
             <TextInput
               style={styles.input}
@@ -502,4 +533,15 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   cancelBtnText: { color: '#64748b', fontWeight: '600', fontSize: 14 },
+  logoBtn: {
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    padding: 14,
+    alignItems: 'center',
+    marginBottom: 12,
+    backgroundColor: '#f8fafc',
+  },
+  logoBtnText: { color: '#2563eb', fontWeight: '600', fontSize: 13 },
 });
