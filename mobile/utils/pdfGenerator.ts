@@ -1,7 +1,6 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
-import { Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 import { EstimateData } from '../types';
 
 export const generateAndSharePDF = async (data: EstimateData) => {
@@ -107,17 +106,28 @@ export const generateAndSharePDF = async (data: EstimateData) => {
   `;
 
   try {
-    const { uri } = await Print.printToFileAsync({ html: htmlContent });
+    // 1. Generujemy PDF w postaci ciągu Base64
+    const { base64 } = await Print.printToFileAsync({
+      html: htmlContent,
+      base64: true,
+    });
 
+    if (!base64) {
+      throw new Error('Nie udało się uzyskać danych pliku PDF');
+    }
+
+    // 2. Tworzymy nową ścieżkę w folderze dokumentów aplikacji
+    const safeDocName = data.estimateNumber.replace(/[\/\\?%*:|"<>]/g, '_');
+    const pdfPath = `${FileSystem.documentDirectory}${safeDocName}.pdf`;
+
+    // 3. Zapisujemy dane bezpośrednio do pliku
+    await FileSystem.writeAsStringAsync(pdfPath, base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    // 4. Otwieramy natywne menu udostępniania
     if (await Sharing.isAvailableAsync()) {
-      let pdfUri = uri;
-
-      // Konwersja ścieżki pliku tymczasowego na Content URI dla Androida
-      if (Platform.OS === 'android') {
-        pdfUri = await FileSystem.getContentUriAsync(uri);
-      }
-
-      await Sharing.shareAsync(pdfUri, {
+      await Sharing.shareAsync(pdfPath, {
         UTI: '.pdf',
         mimeType: 'application/pdf',
         dialogTitle: `Wyślij wycenę ${data.estimateNumber}`,
