@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Wycena {{estimate_number}}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1e293b; padding: 40px; font-size: 13px; line-height: 1.5; }
+        
+        .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 30px; }
+        .company-title { font-size: 22px; font-weight: bold; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; }
+        .company-subtitle { font-size: 12px; color: #64748b; margin-top: 2px; }
+        .estimate-badge { background-color: #eff6ff; color: #2563eb; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 16px; text-align: right; }
+        
+        .details-grid { display: flex; justify-content: space-between; margin-bottom: 30px; }
+        .details-box { width: 48%; background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #e2e8f0; }
+        .details-box h3 { font-size: 11px; text-transform: uppercase; color: #64748b; margin-bottom: 8px; letter-spacing: 0.5px; }
+        .details-box p { font-size: 13px; font-weight: 500; }
+        
+        table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+        th { background-color: #0f172a; color: #ffffff; font-weight: 600; text-align: left; padding: 10px; font-size: 11px; text-transform: uppercase; }
+        td { padding: 12px 10px; border-bottom: 1px solid #e2e8f0; }
+        tr:nth-child(even) { background-color: #f8fafc; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        
+        .totals-container { display: flex; justify-content: flex-end; margin-bottom: 30px; }
+        .totals-table { width: 40%; }
+        .totals-table div { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e2e8f0; }
+        .totals-table div.grand-total { font-size: 16px; font-weight: bold; color: #0f172a; border-bottom: 2px solid #0f172a; border-top: 1px solid #0f172a; margin-top: 6px; padding: 10px 0; }
+        
+        .advance-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 12px; border-radius: 6px; margin-bottom: 30px; color: #166534; font-weight: 500; }
+        
+        .signature-section { display: flex; justify-content: space-between; margin-top: 50px; page-break-inside: avoid; }
+        .signature-box { width: 45%; border-top: 1px dashed #94a3b8; pt: 10px; text-align: center; font-size: 11px; color: #64748b; }
+        .signature-img { max-height: 60px; margin-bottom: 5px; }
+        
+        .footer { margin-top: 40px; font-size: 10px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 15px; }
+    </style>
+</head>
+<body>
+
+    <!-- NAGŁÓWEK -->
+    <div class="header">
+        <div>
+            <div class="company-title">{{company_name}}</div>
+            <div class="company-subtitle">Usługi Remontowo-Budowlane</div>
+            <div style="margin-top: 8px; font-size: 11px; color: #475569;">
+                Tel: {{company_phone}} | Email: {{company_email}}<br>
+                Nr konta do zaliczek: {{company_bank_account}}
+            </div>
+        </div>
+        <div>
+            <div class="estimate-badge">WYCENA: {{estimate_number}}</div>
+            <div style="text-align: right; font-size: 11px; color: #64748b; margin-top: 6px;">
+                Data wystawienia: {{issue_date}}<br>
+                Ważność oferty: {{valid_until}}
+            </div>
+        </div>
+    </div>
+
+    <!-- DANE WYKONAWCY I KLIENTA -->
+    <div class="details-grid">
+        <div class="details-box">
+            <h3>Wykonawca</h3>
+            <p><strong>{{company_name}}</strong></p>
+            <p>{{company_phone}}</p>
+        </div>
+        <div class="details-box">
+            <h3>Zleceniodawca / Klient</h3>
+            <p><strong>{{client_name}}</strong></p>
+            <p>{{client_address}}</p>
+            <p>Tel: {{client_phone}}</p>
+        </div>
+    </div>
+
+    <!-- TABELA POZYCJI -->
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 5%;">Lp.</th>
+                <th style="width: 45%;">Nazwa usługi / materiału</th>
+                <th class="text-center" style="width: 10%;">J.m.</th>
+                <th class="text-right" style="width: 10%;">Ilość</th>
+                <th class="text-right" style="width: 15%;">Cena jedn.</th>
+                <th class="text-right" style="width: 15%;">Wartość</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Pętla pozycji (przykład statyczny) -->
+            {{#items}}
+            <tr>
+                <td class="text-center">{{index}}</td>
+                <td><strong>{{name}}</strong></td>
+                <td class="text-center">{{unit}}</td>
+                <td class="text-right">{{quantity}}</td>
+                <td class="text-right">{{price_unit}} zł</td>
+                <td class="text-right"><strong>{{total}} zł</strong></td>
+            </tr>
+            {{/items}}
+        </tbody>
+    </table>
+
+    <!-- PODSUMOWANIE FINANSOWE -->
+    <div class="totals-container">
+        <div class="totals-table">
+            <div>
+                <span>Suma netto:</span>
+                <span>{{total_net}} PLN</span>
+            </div>
+            <div>
+                <span>Szacowany VAT:</span>
+                <span>{{total_vat}} PLN</span>
+            </div>
+            <div class="grand-total">
+                <span>RAZEM (Brutto):</span>
+                <span>{{total_gross}} PLN</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ZALICZKA -->
+    <div class="advance-box">
+        💡 Warunki płatności: Wymagana zaliczka przed rozpoczęciem prac w wysokości <strong>{{advance_percent}}% (tj. {{advance_amount}} PLN)</strong> na podane wyżej konto bankowe.
+    </div>
+
+    <!-- PODPISY -->
+    <div class="signature-section">
+        <div class="signature-box">
+            Podpis i pieczęć Wykonawcy
+        </div>
+        <div class="signature-box">
+            <img src="{{signature_base64}}" class="signature-img" alt="Podpis Klienta"><br>
+            Akceptacja Klienta (E-Podpis)
+        </div>
+    </div>
+
+    <div class="footer">
+        Dokument wygenerowany automatycznie za pomocą aplikacji FachOferta. Niniejsza wycena stanowi ofertę handlową.
+    </div>
+
+</body>
+</html>
