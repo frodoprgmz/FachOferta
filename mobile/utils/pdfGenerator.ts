@@ -47,16 +47,17 @@ export const generateAndSharePDF = async (data: EstimateData) => {
     </head>
     <body>
       <div class="header">
-        <div>
-          <div style="font-size: 20px; font-weight: bold; text-transform: uppercase;">${data.contractor.companyName}</div>
-          <div style="color: #64748b; font-size: 11px;">Tel: ${data.contractor.phone} | Email: ${data.contractor.email}</div>
-          <div style="color: #64748b; font-size: 11px;">Konto: ${data.contractor.bankAccount}</div>
-        </div>
-        <div>
-          <div class="badge">WYCENA: ${data.estimateNumber}</div>
-          <div style="text-align: right; font-size: 11px; color: #64748b; margin-top: 5px;">Data: ${data.issueDate}</div>
-        </div>
-      </div>
+  <div>
+    <div style="font-size: 20px; font-weight: bold; text-transform: uppercase;">${data.contractor.companyName}</div>
+    ${data.contractor.nip ? `<div style="color: #64748b; font-size: 11px;">NIP: ${data.contractor.nip}</div>` : ''}
+    <div style="color: #64748b; font-size: 11px;">Tel: ${data.contractor.phone} | Email: ${data.contractor.email}</div>
+    <div style="color: #64748b; font-size: 11px;">Konto: ${data.contractor.bankAccount}</div>
+  </div>
+  <div>
+    <div class="badge">WYCENA: ${data.estimateNumber}</div>
+    <div style="text-align: right; font-size: 11px; color: #64748b; margin-top: 5px;">Data: ${data.issueDate}</div>
+  </div>
+</div>
 
       <div class="grid">
         <div class="box">
