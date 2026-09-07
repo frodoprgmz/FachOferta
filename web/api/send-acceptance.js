@@ -33,12 +33,17 @@ module.exports = async function handler(req, res) {
   try {
     const { contractorEmail, estimateNumber, clientName, totalGross } = body;
 
+    const normalizeEnv = (value) => (typeof value === 'string' ? value.trim() : '');
+
     // 3. Pobranie i czyszczenie zmiennych z Vercela (usuwa przypadkowe spacje na końcach)
-    const smtpHost = process.env.SMTP_HOST ? process.env.SMTP_HOST.trim() : '';
-    const smtpPort = Number((process.env.SMTP_PORT || '587').trim());
-    const smtpUser = process.env.SMTP_USER ? process.env.SMTP_USER.trim() : '';
-    const smtpPass = process.env.SMTP_PASS ? process.env.SMTP_PASS.trim() : '';
-    const smtpFrom = process.env.SMTP_FROM ? process.env.SMTP_FROM.trim() : smtpUser;
+    const smtpHost = normalizeEnv(process.env.SMTP_HOST);
+    const smtpPortRaw = normalizeEnv(process.env.SMTP_PORT);
+    const smtpPort = Number(smtpPortRaw || '587');
+    const smtpUser = normalizeEnv(process.env.SMTP_USER);
+    const smtpPass = normalizeEnv(process.env.SMTP_PASS);
+    const smtpFrom = normalizeEnv(process.env.SMTP_FROM) || smtpUser;
+    const smtpSecureOverride = normalizeEnv(process.env.SMTP_SECURE).toLowerCase();
+    const smtpSecure = smtpSecureOverride ? smtpSecureOverride === 'true' : smtpPort === 465;
 
     console.log('[send-acceptance] Start wysyłki:', {
       contractorEmail,
@@ -47,41 +52,48 @@ module.exports = async function handler(req, res) {
       totalGross,
       smtpHost,
       smtpPort,
+      secure: smtpSecure,
       hasUser: Boolean(smtpUser),
       hasPass: Boolean(smtpPass),
+      hasFrom: Boolean(smtpFrom),
     });
 
     if (!contractorEmail) {
       return res.status(400).json({ error: 'Brak adresu e-mail wykonawcy w żądaniu' });
     }
 
-    if (!smtpHost || !smtpUser || !smtpPass) {
+    if (!smtpHost || !smtpUser || !smtpPass || !smtpFrom) {
       return res.status(500).json({
         error: 'Brak konfiguracji SMTP w Vercel Environment Variables',
         status: {
           SMTP_HOST: Boolean(smtpHost),
           SMTP_USER: Boolean(smtpUser),
           SMTP_PASS: Boolean(smtpPass),
+          SMTP_FROM: Boolean(smtpFrom),
         },
       });
     }
 
-    // 4. Konfiguracja Transportera z sztywnym limitowaniem czasu (Timeout)
+    // 4. Konfiguracja Transportera z sztywnym limitowaniem czasu (Timeout) + poprawną detekcją SSL / STARTTLS
     const transporter = nodemailer.createTransport({
       host: smtpHost,
       port: smtpPort,
-      secure: smtpPort === 465, // true dla portu 465 (SSL), false dla 587 (STARTTLS)
+      secure: smtpSecure,
       auth: {
         user: smtpUser,
         pass: smtpPass,
       },
-      connectionTimeout: 7000, // max 7 sekund na nawiązanie połączenia z serwerem poczty
-      greetingTimeout: 7000,
-      socketTimeout: 7000,
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
       tls: {
-        rejectUnauthorized: false, // ignoruje błędy ze starymi/niepodpisanymi certyfikatami SSL
+        rejectUnauthorized: process.env.SMTP_TLS_REJECT_UNAUTHORIZED !== 'false',
       },
+      debug: process.env.NODE_ENV !== 'production',
+      logger: process.env.NODE_ENV !== 'production',
     });
+
+    await transporter.verify();
 
     // 5. Wysyłka e-maila
     const mailResult = await transporter.sendMail({
