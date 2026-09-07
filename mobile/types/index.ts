@@ -1,3 +1,12 @@
+export interface EstimateItem {
+  id: string;
+  name: string;
+  unit: string;
+  quantity: number;
+  unitPriceNet: number;
+  totalNet: number;
+}
+
 export interface Contractor {
   companyName: string;
   phone: string;
@@ -13,16 +22,8 @@ export interface Client {
   address: string;
 }
 
-export interface EstimateItem {
-  id: string;
-  name: string;
-  unit: string;
-  quantity: number;
-  unitPriceNet: number;
-  totalNet: number;
-}
-
 export interface EstimateData {
+  id: string;
   estimateNumber: string;
   issueDate: string;
   validUntil: string;
@@ -30,4 +31,6 @@ export interface EstimateData {
   client: Client;
   items: EstimateItem[];
   advancePercent: number;
+  status?: 'SENT' | 'ACCEPTED';
+  acceptedAt?: string;
 }

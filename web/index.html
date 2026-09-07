@@ -1,0 +1,300 @@
+﻿<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Akceptacja Wyceny</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen p-4 md:p-8">
+
+  <div id="app" class="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200 p-6 md:p-8">
+    <div id="loading" class="text-center py-12">
+      <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-600 border-t-transparent mb-4"></div>
+      <p class="text-slate-500 font-medium">Wczytywanie kosztorysu...</p>
+    </div>
+
+    <div id="error" class="hidden text-center py-12">
+      <div class="text-red-500 text-5xl mb-4">⚠️</div>
+      <h2 class="text-xl font-bold text-slate-900 mb-2">Nie znaleziono wyceny</h2>
+      <p class="text-slate-500 text-sm">Link jest nieprawidłowy lub oferta wygasła.</p>
+    </div>
+
+    <div id="content" class="hidden">
+      <!-- Nagłówek -->
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-200 pb-6 mb-6 gap-4">
+        <div>
+          <div id="company-logo" class="mb-2 hidden">
+            <img id="logo-img" src="" alt="Logo" class="h-12 object-contain" />
+          </div>
+          <h1 id="company-name" class="text-xl font-bold uppercase text-slate-900"></h1>
+          <p id="company-details" class="text-xs text-slate-500 mt-1"></p>
+        </div>
+        <div class="text-right">
+          <span id="estimate-number" class="inline-block bg-blue-50 text-blue-600 font-bold px-3 py-1 rounded-lg text-sm mb-1"></span>
+          <p id="issue-date" class="text-xs text-slate-400"></p>
+        </div>
+      </div>
+
+      <!-- Dane Stron -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <p class="text-xs font-bold uppercase text-slate-400 mb-1">Wykonawca:</p>
+          <p id="contractor-name" class="font-semibold text-slate-800 text-sm"></p>
+          <p id="contractor-phone" class="text-xs text-slate-500 mt-1"></p>
+        </div>
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <p class="text-xs font-bold uppercase text-slate-400 mb-1">Zleceniodawca</p>
+          <p id="client-name" class="font-semibold text-slate-800 text-sm"></p>
+          <p id="client-address" class="text-xs text-slate-500 mt-1"></p>
+        </div>
+      </div>
+
+      <!-- Tabela Pozycji -->
+      <div class="overflow-x-auto mb-6">
+        <table class="w-full text-left text-sm">
+          <thead>
+            <tr class="bg-slate-900 text-white text-xs uppercase">
+              <th class="p-3 rounded-l-lg">Usługa / Materiał</th>
+              <th class="p-3 text-center">Ilość</th>
+              <th class="p-3 text-right">Cena</th>
+              <th class="p-3 text-right rounded-r-lg">Razem</th>
+            </tr>
+          </thead>
+          <tbody id="items-table" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+
+      <!-- Podsumowanie Finansowe -->
+      <div class="flex justify-end mb-6">
+        <div class="w-full md:w-1/2 space-y-2 border-t-2 border-slate-900 pt-3">
+          <div class="flex justify-between text-sm text-slate-600">
+            <span>Suma Netto:</span>
+            <span id="total-net"></span>
+          </div>
+          <div class="flex justify-between text-sm text-slate-600">
+            <span>VAT (23%):</span>
+            <span id="total-vat"></span>
+          </div>
+          <div class="flex justify-between text-base font-bold text-slate-900 pt-2 border-t border-slate-200">
+            <span>RAZEM Brutto:</span>
+            <span id="total-gross"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Warunki Zaliczki -->
+      <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl text-sm mb-8">
+        💡 <strong>Warunki:</strong> Wymagana zaliczka <span id="advance-percent"></span>% tj. <strong id="advance-amount"></strong> PLN na konto bankowe.
+      </div>
+
+      <!-- MIEJSCE NA BŁĄD DLA KLIENTA -->
+      <div id="client-error-box" class="hidden bg-red-100 border-2 border-red-500 text-red-900 p-4 rounded-xl text-sm font-mono mb-6 break-words"></div>
+
+      <!-- Sekcja Akceptacji -->
+      <div id="action-section" class="border-t border-slate-200 pt-6 text-center">
+        <button id="accept-btn" onclick="acceptEstimate()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl shadow-lg transition duration-200 text-base flex items-center justify-center gap-2">
+          <span>🟢</span> Akceptuję wycenę i zamawiam
+        </button>
+      </div>
+
+      <div id="accepted-success" class="hidden bg-emerald-100 border border-emerald-300 text-emerald-900 p-6 rounded-xl text-center">
+        <div class="text-3xl mb-2">🎉</div>
+        <h3 class="font-bold text-lg">Kosztorys został zaakceptowany!</h3>
+        <p class="text-xs text-emerald-700 mt-1" id="accepted-date"></p>
+        <p class="text-xs text-emerald-600 mt-2">Wykonawca otrzymał powiadomienie i skontaktuje się z Tobą w celu ustalenia szczegółów.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://nufqvbubofjsbqijclci.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im51ZnF2YnVib2Zqc2JxaWpjbGNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1MTQzOTQsImV4cCI6MjEwNDA5MDM5NH0.AhfTWekCGKcxpAtp-QL-UuxBp0pUjhFekueg4gzMX1k';
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const estimateId = urlParams.get('id');
+
+    let currentEstimate = null;
+    let computedTotalGross = '0.00';
+
+    async function loadEstimate() {
+      if (!estimateId) {
+        showError();
+        return;
+      }
+
+      const { data, error } = await supabaseClient
+        .from('estimates')
+        .select('*')
+        .eq('id', estimateId)
+        .single();
+
+      if (error || !data) {
+        showError();
+        return;
+      }
+
+      currentEstimate = data;
+      renderEstimate(data);
+    }
+
+    function showError() {
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('error').classList.remove('hidden');
+    }
+
+    function parseData(field) {
+      if (!field) return {};
+      if (typeof field === 'string') {
+        try { return JSON.parse(field); } catch (e) { return {}; }
+      }
+      return field;
+    }
+
+    function renderEstimate(data) {
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('content').classList.remove('hidden');
+
+      const c = parseData(data.contractor);
+      const cl = parseData(data.client);
+      const items = parseData(data.items) || [];
+
+      if (c.logoBase64) {
+        document.getElementById('logo-img').src = c.logoBase64;
+        document.getElementById('company-logo').classList.remove('hidden');
+      }
+
+      document.getElementById('company-name').innerText = c.companyName || 'Wykonawca';
+      document.getElementById('company-details').innerText = `Tel: ${c.phone || '-'} | Email: ${c.email || c.contractorEmail || '-'}`;
+      document.getElementById('estimate-number').innerText = data.estimate_number || 'WYCENA';
+
+      document.getElementById('contractor-name').innerText = c.companyName || '-';
+      document.getElementById('contractor-phone').innerText = `Tel: ${c.phone || '-'}`;
+
+      document.getElementById('client-name').innerText = cl.name || '-';
+      document.getElementById('client-address').innerText = `${cl.address || ''} (Tel: ${cl.phone || '-'})`;
+
+      const tbody = document.getElementById('items-table');
+      let totalNet = 0;
+
+      tbody.innerHTML = items.map(item => {
+        totalNet += (item.totalNet || 0);
+        return `
+          <tr class="border-b border-slate-50 text-slate-700">
+            <td class="p-3 font-medium">${item.name}</td>
+            <td class="p-3 text-center text-slate-500">${item.quantity} ${item.unit}</td>
+            <td class="p-3 text-right text-slate-500">${(item.unitPriceNet || 0).toFixed(2)} zł</td>
+            <td class="p-3 text-right font-bold text-slate-900">${(item.totalNet || 0).toFixed(2)} zł</td>
+          </tr>
+        `;
+      }).join('');
+
+      const vat = totalNet * 0.23;
+      const gross = totalNet + vat;
+      computedTotalGross = gross.toFixed(2);
+
+      const advancePercent = data.advance_percent || 0;
+      const advanceAmount = (gross * (advancePercent / 100)).toFixed(2);
+
+      document.getElementById('total-net').innerText = `${totalNet.toFixed(2)} PLN`;
+      document.getElementById('total-vat').innerText = `${vat.toFixed(2)} PLN`;
+      document.getElementById('total-gross').innerText = `${computedTotalGross} PLN`;
+      document.getElementById('advance-percent').innerText = advancePercent;
+      document.getElementById('advance-amount').innerText = advanceAmount;
+
+      if (data.status === 'ACCEPTED' || data.status === 'ACCEPTED_ONLINE') {
+        showAcceptedState(data.accepted_at);
+      }
+    }
+
+    function showClientError(msg) {
+      const errBox = document.getElementById('client-error-box');
+      errBox.innerHTML = `<strong>🚨 BŁĄD WYSYŁKI MAILA (AKCEPTACJA PRZERWANA):</strong><br><span class="text-xs">${msg}</span>`;
+      errBox.classList.remove('hidden');
+    }
+
+    async function acceptEstimate() {
+      const btn = document.getElementById('accept-btn');
+      document.getElementById('client-error-box').classList.add('hidden'); // ukryj stare błędy
+
+      btn.disabled = true;
+      btn.innerText = '⏳ Weryfikacja i wysyłanie e-maila...';
+
+      const c = parseData(currentEstimate.contractor);
+      const cl = parseData(currentEstimate.client);
+      const contractorEmail = c.email || c.contractorEmail || c.mail;
+
+      // 1. ODRZUCENIE JEŚLI BRAK EMAILA W BAZIE
+      if (!contractorEmail) {
+        showClientError('W bazie danych Supabase brak adresu e-mail wykonawcy dla tego kosztorysu. Nie można wysłać powiadomienia.');
+        btn.disabled = false;
+        btn.innerText = '🟢 Akceptuję wycenę i zamawiam';
+        return; // WYJEBUJEMY - NIE ZMIENIAMY STATUSU NA SUKCES!
+      }
+
+      // 2. PRÓBA WYSYŁKI MAILA (PRZED ZAPISEM W BAZIE)
+      try {
+        const response = await fetch('/api/send-acceptance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contractorEmail: contractorEmail,
+            estimateNumber: currentEstimate.estimate_number || 'WYCENA',
+            clientName: cl.name || 'Klient',
+            totalGross: computedTotalGross,
+          }),
+        });
+
+        const resData = await response.json();
+
+        if (!response.ok) {
+          // WYJEBUJEMY BŁĘDEM SERWERA NA STRONIE
+          const details = resData.message || resData.error || resData.code || JSON.stringify(resData);
+          showClientError(`Serwer pocztowy odrzucił wysyłkę (Kod ${response.status}): ${details}`);
+          btn.disabled = false;
+          btn.innerText = '🟢 Akceptuję wycenę i zamawiam 🟢';
+          return; // STOP!
+        }
+      } catch (mailErr) {
+        showClientError(`Błąd połączenia z API wysyłki: ${mailErr.message}`);
+        btn.disabled = false;
+        btn.innerText = '🟢 Akceptuję wycenę i zamawiam';
+        return; // STOP!
+      }
+
+      // 3. DOPIERO PO UDANEJ WYSYŁCE MAILA ZMIENIAMY STATUS W BAZIE
+      btn.innerText = 'Zapisywanie akceptacji w bazie...';
+      const acceptedAt = new Date().toISOString();
+
+      const { error } = await supabaseClient
+        .from('estimates')
+        .update({ status: 'ACCEPTED', accepted_at: acceptedAt })
+        .eq('id', estimateId);
+
+      if (error) {
+        showClientError('E-mail został wysłany, ale wystąpił błąd zapisu w bazie Supabase: ' + error.message);
+        btn.disabled = false;
+        btn.innerText = '🟢 Akceptuję wycenę i zamawiam';
+        return;
+      }
+
+      // 4. SUKCES - Dopiero tu pokazujemy zielony ekran
+      showAcceptedState(acceptedAt);
+    }
+
+    function showAcceptedState(dateStr) {
+      document.getElementById('action-section').classList.add('hidden');
+      document.getElementById('client-error-box').classList.add('hidden');
+      const successBox = document.getElementById('accepted-success');
+      successBox.classList.remove('hidden');
+      if (dateStr) {
+        document.getElementById('accepted-date').innerText = `Data akceptacji: ${new Date(dateStr).toLocaleString('pl-PL')}`;
+      }
+    }
+
+    loadEstimate();
+  </script>
+</body>
+</html>

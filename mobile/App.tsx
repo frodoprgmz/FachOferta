@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from './lib/supabase';
 import {
   StyleSheet,
   Text,
@@ -164,7 +165,11 @@ export default function App() {
       return null;
     }
 
+    // Generujemy unikalne ID wyceny do połączenia z Supabase i stroną Vercel
+    const estimateId = Date.now().toString();
+
     return {
+      id: estimateId,
       estimateNumber: `WYC/${new Date().getFullYear()}/${Math.floor(100 + Math.random() * 900)}`,
       issueDate: new Date().toLocaleDateString('pl-PL'),
       validUntil: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString('pl-PL'),
@@ -176,6 +181,7 @@ export default function App() {
       },
       items,
       advancePercent: parseFloat(advancePercent) || 0,
+      status: 'SENT',
     };
   };
 
@@ -188,30 +194,54 @@ export default function App() {
     setIsPreviewOpen(true);
   };
 
+  const saveAndSendEstimate = async (data: EstimateData) => {
+    try {
+      // 1. Zapis do Supabase (Bazy Online)
+      const { error } = await supabase.from('estimates').insert([
+        {
+          id: data.id,
+          estimate_number: data.estimateNumber,
+          contractor: data.contractor,
+          client: data.client,
+          items: data.items,
+          advance_percent: data.advancePercent,
+          status: 'SENT',
+        },
+      ]);
+
+      if (error) {
+        console.error('Błąd Supabase:', error);
+      } else {
+        console.log('✅ Wycena zapisana w chmurze Supabase!');
+      }
+
+      // 2. Zapis lokalny w telefonie
+      await saveEstimate(data);
+
+      // 3. Generowanie PDF z unikalnym linkiem i udostępnianie
+      await generateAndSharePDF(data);
+
+      // Czyszczenie pól formularza
+      setClientName('');
+      setClientPhone('');
+      setClientAddress('');
+      setItems([]);
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Błąd', 'Nie udało się przetworzyć wyceny.');
+    }
+  };
+
   const handleGeneratePDF = async () => {
     const data = buildEstimateData();
     if (!data) return;
-
-    await saveEstimate(data);
-    await generateAndSharePDF(data);
-
-    setClientName('');
-    setClientPhone('');
-    setClientAddress('');
-    setItems([]);
+    await saveAndSendEstimate(data);
   };
 
   const handleSendFromPreview = async () => {
     if (!currentEstimateData) return;
-
     setIsPreviewOpen(false);
-    await saveEstimate(currentEstimateData);
-    await generateAndSharePDF(currentEstimateData);
-
-    setClientName('');
-    setClientPhone('');
-    setClientAddress('');
-    setItems([]);
+    await saveAndSendEstimate(currentEstimateData);
   };
 
   return (
