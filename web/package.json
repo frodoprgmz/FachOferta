@@ -1,6 +1,9 @@
 {
   "name": "fach-oferta-web",
   "private": true,
+  "scripts": {
+    "build": "echo \"No build step required\""
+  },
   "dependencies": {
     "nodemailer": "^7.0.13"
   }
