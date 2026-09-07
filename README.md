@@ -1,4 +1,4 @@
-# 🛠️ FachOferta - Mobilny Generator Wycen i Costorysów dla Fachowców
+# 🛠️ FachOferta - Mobilny Generator Wycen i Kosztorysów dla Fachowców
 
 **FachOferta** to aplikacja mobilna typu Micro-SaaS dedykowana dla wykonawców, stolarzy, instalatorów i projektantów. Pozwala na błyskawiczne tworzenie wycen na miejscu u klienta, pobranie e-podpisu i wysyłkę gotowego dokumentu PDF w kilka minut.
 
