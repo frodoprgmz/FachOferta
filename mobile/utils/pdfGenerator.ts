@@ -2,8 +2,8 @@ import * as Print from 'expo-print';
 import { Alert } from 'react-native';
 import { EstimateData } from '../types';
 
-// Twój adres strony z Vercela
-const WEB_BASE_URL = 'https://web-mnajmnrp3-frodoprgmzs-projects.vercel.app';
+// Stały alias produkcyjny, niezależny od konkretnego deploymentu Vercel
+const WEB_BASE_URL = 'https://fach-oferta-app.vercel.app';
 
 export const getEstimateHTML = (data: EstimateData): string => {
   const acceptUrl = data.id ? `${WEB_BASE_URL}/?id=${data.id}` : WEB_BASE_URL;

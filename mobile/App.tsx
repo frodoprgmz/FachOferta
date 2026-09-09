@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabase';
+import NetInfo from '@react-native-community/netinfo';
+import { AppState, Linking } from 'react-native';
 import {
   StyleSheet,
   Text,
@@ -17,7 +19,14 @@ import * as ImagePicker from 'expo-image-picker';
 import { WebView } from 'react-native-webview';
 import { EstimateItem, EstimateData, Contractor } from './types';
 import { generateAndSharePDF, getEstimateHTML } from './utils/pdfGenerator';
-import { saveEstimate, getSavedEstimates, deleteEstimate } from './utils/storage';
+import {
+  saveEstimate,
+  getSavedEstimates,
+  deleteEstimate,
+  addPendingEstimate,
+  getPendingEstimates,
+  removePendingEstimate,
+} from './utils/storage';
 
 const CONTRACTOR_STORAGE_KEY = '@fach_oferta_contractor';
 
@@ -50,9 +59,87 @@ export default function App() {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
   const [currentEstimateData, setCurrentEstimateData] = useState<EstimateData | null>(null);
+  const [sessionUser, setSessionUser] = useState<any | null>(null);
+  const [subscriptionProfile, setSubscriptionProfile] = useState<any | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const syncingRef = useRef(false);
+  const OAUTH_REDIRECT_URI = 'fachoferta://auth/callback';
+
+  const getSubscriptionState = () => {
+    if (!sessionUser || !subscriptionProfile) {
+      return { isActive: false, status: 'not_logged_in' };
+    }
+
+    const expiresAt = subscriptionProfile.subscription_expires_at ? new Date(subscriptionProfile.subscription_expires_at) : null;
+    const isActive = subscriptionProfile.subscription_status === 'active' || subscriptionProfile.subscription_status === 'trial';
+    const notExpired = !expiresAt || expiresAt.getTime() > Date.now();
+    return { isActive: isActive && notExpired, status: subscriptionProfile.subscription_status || 'trial' };
+  };
 
   useEffect(() => {
-    loadContractorData();
+    const init = async () => {
+      setAuthLoading(true);
+      await loadContractorData();
+
+      const initialUrl = await Linking.getInitialURL();
+      if (initialUrl) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          await hydrateUserSession(session.user);
+        }
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await hydrateUserSession(session.user);
+      }
+      setAuthLoading(false);
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        if (session?.user) {
+          await hydrateUserSession(session.user);
+        } else {
+          setSessionUser(null);
+          setSubscriptionProfile(null);
+          setAuthLoading(false);
+        }
+      });
+
+      const subscriptionLink = Linking.addEventListener('url', async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          await hydrateUserSession(session.user);
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+        subscriptionLink.remove();
+      };
+    };
+
+    void init();
+
+    const syncIfOnline = async (isConnected: boolean | null) => {
+      if (isConnected) {
+        await syncPendingEstimates();
+      }
+    };
+    const unsubscribeNetInfo = NetInfo.addEventListener((state) => {
+      void syncIfOnline(state.isConnected);
+    });
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void NetInfo.fetch().then((networkState) => syncIfOnline(networkState.isConnected));
+      }
+    });
+
+    void NetInfo.fetch().then((networkState) => syncIfOnline(networkState.isConnected));
+
+    return () => {
+      unsubscribeNetInfo();
+      appStateSubscription.remove();
+    };
   }, []);
 
   const loadContractorData = async () => {
@@ -64,6 +151,57 @@ export default function App() {
     } catch (e) {
       console.error('Błąd wczytywania danych firmy:', e);
     }
+  };
+
+  const hydrateUserSession = async (user: any) => {
+    setSessionUser(user);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .upsert(
+          {
+            id: user.id,
+            full_name: user.user_metadata?.full_name || user.user_metadata?.name || user.email,
+            company_name: '',
+            subscription_status: 'trial',
+            subscription_expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+          },
+          { onConflict: 'id' }
+        )
+        .select()
+        .single();
+
+      if (!error && data) {
+        setSubscriptionProfile(data);
+      }
+    } catch (e) {
+      console.error('Błąd ładowania profilu użytkownika:', e);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: OAUTH_REDIRECT_URI,
+          skipBrowserRedirect: false,
+        },
+      });
+
+      if (error) {
+        Alert.alert('Błąd logowania', error.message);
+      }
+    } catch (e) {
+      Alert.alert('Błąd logowania', e instanceof Error ? e.message : 'Unknown error');
+    }
+  };
+
+  const handleGoogleLogout = async () => {
+    await supabase.auth.signOut();
+    setSessionUser(null);
+    setSubscriptionProfile(null);
+    Alert.alert('Wylogowano', 'Sesja Google została zakończona.');
   };
 
   const saveContractorData = async () => {
@@ -116,6 +254,43 @@ export default function App() {
     ]);
   };
 
+  const syncPendingEstimates = async () => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
+
+    try {
+      if (!sessionUser?.id) {
+        return;
+      }
+
+      const pending = await getPendingEstimates();
+      for (const estimate of pending) {
+        const { error } = await supabase.from('estimates').upsert(
+          {
+            id: estimate.id,
+            user_id: sessionUser.id,
+            estimate_number: estimate.estimateNumber,
+            contractor: estimate.contractor,
+            client: estimate.client,
+            items: estimate.items,
+            advance_percent: estimate.advancePercent,
+            status: estimate.status || 'SENT',
+          },
+          { onConflict: 'id' }
+        );
+
+        if (error) {
+          console.error('Synchronizacja wyceny nie powiodła się:', error);
+          continue;
+        }
+
+        await removePendingEstimate(estimate.id);
+      }
+    } finally {
+      syncingRef.current = false;
+    }
+  };
+
   const addItem = () => {
     if (!itemName || !itemPrice) {
       Alert.alert('Błąd', 'Wpisz nazwę usługi oraz cenę');
@@ -165,11 +340,10 @@ export default function App() {
       return null;
     }
 
-    // Generujemy unikalne ID wyceny do połączenia z Supabase i stroną Vercel
-    const estimateId = Date.now().toString();
+    const estimatedId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 
     return {
-      id: estimateId,
+      id: estimatedId,
       estimateNumber: `WYC/${new Date().getFullYear()}/${Math.floor(100 + Math.random() * 900)}`,
       issueDate: new Date().toLocaleDateString('pl-PL'),
       validUntil: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString('pl-PL'),
@@ -196,29 +370,40 @@ export default function App() {
 
   const saveAndSendEstimate = async (data: EstimateData) => {
     try {
-      // 1. Zapis do Supabase (Bazy Online)
-      const { error } = await supabase.from('estimates').insert([
-        {
-          id: data.id,
-          estimate_number: data.estimateNumber,
-          contractor: data.contractor,
-          client: data.client,
-          items: data.items,
-          advance_percent: data.advancePercent,
-          status: 'SENT',
-        },
-      ]);
-
-      if (error) {
-        console.error('Błąd Supabase:', error);
-      } else {
-        console.log('✅ Wycena zapisana w chmurze Supabase!');
-      }
-
-      // 2. Zapis lokalny w telefonie
+      // Zapis lokalny jest źródłem prawdy, więc PDF działa także bez internetu.
       await saveEstimate(data);
 
-      // 3. Generowanie PDF z unikalnym linkiem i udostępnianie
+      if (sessionUser?.id) {
+        let syncError: { message: string } | null = null;
+        try {
+          const { error } = await supabase.from('estimates').upsert(
+            {
+              id: data.id,
+              user_id: sessionUser.id,
+              estimate_number: data.estimateNumber,
+              contractor: data.contractor,
+              client: data.client,
+              items: data.items,
+              advance_percent: data.advancePercent,
+              status: 'SENT',
+            },
+            { onConflict: 'id' }
+          );
+          syncError = error;
+        } catch (error) {
+          syncError = { message: error instanceof Error ? error.message : 'Błąd połączenia' };
+        }
+
+        if (syncError) {
+          console.warn('Wycena czeka na synchronizację:', syncError.message);
+          await addPendingEstimate(data);
+        } else {
+          console.log('✅ Wycena zapisana w chmurze Supabase!');
+          await removePendingEstimate(data.id);
+        }
+      }
+
+      // Generowanie PDF z linkiem, który będzie aktywny po synchronizacji.
       await generateAndSharePDF(data);
 
       // Czyszczenie pól formularza
@@ -233,6 +418,12 @@ export default function App() {
   };
 
   const handleGeneratePDF = async () => {
+    const { isActive } = getSubscriptionState();
+    if (!isActive) {
+      Alert.alert('Dostęp wygasł', 'Twoja subskrypcja nie jest aktywna. Skontaktuj się z administratorem.');
+      return;
+    }
+
     const data = buildEstimateData();
     if (!data) return;
     await saveAndSendEstimate(data);
@@ -251,8 +442,27 @@ export default function App() {
           <View>
             <Text style={styles.title}>🛠️ FachOferta</Text>
             <Text style={styles.subtitle}>Szybka wycena u klienta</Text>
+            <Text style={styles.authText}>
+              {authLoading
+                ? 'Ładowanie konta...'
+                : sessionUser
+                  ? `Zalogowano: ${sessionUser.email}`
+                  : 'Brak konta Google'}
+            </Text>
+            <Text style={styles.authStatusText}>
+              {getSubscriptionState().isActive ? 'Status: aktywny' : 'Status: wygasły'}
+            </Text>
           </View>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
+          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+            {!sessionUser ? (
+              <TouchableOpacity style={styles.topBtn} onPress={handleGoogleLogin}>
+                <Text style={styles.topBtnText}>🔐 Google</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.topBtn} onPress={handleGoogleLogout}>
+                <Text style={styles.topBtnText}>🚪 Wyloguj</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={styles.topBtn} onPress={openHistory}>
               <Text style={styles.topBtnText}>📜 Historia</Text>
             </TouchableOpacity>
@@ -549,6 +759,8 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 22, fontWeight: 'bold', color: '#0f172a' },
   subtitle: { fontSize: 12, color: '#64748b' },
+  authText: { fontSize: 11, color: '#334155', marginTop: 4 },
+  authStatusText: { fontSize: 11, color: '#0f766e', marginTop: 2 },
   topBtn: {
     backgroundColor: '#e2e8f0',
     paddingVertical: 8,

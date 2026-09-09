@@ -2,6 +2,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { EstimateData } from '../types';
 
 const ESTIMATES_STORAGE_KEY = '@fach_oferta_estimates';
+const PENDING_SYNC_STORAGE_KEY = '@fach_oferta_pending_sync';
+
+const readPendingEstimates = async (): Promise<EstimateData[]> => {
+  try {
+    const jsonValue = await AsyncStorage.getItem(PENDING_SYNC_STORAGE_KEY);
+    return jsonValue != null ? JSON.parse(jsonValue) : [];
+  } catch (e) {
+    console.error('Błąd pobierania kolejki synchronizacji:', e);
+    return [];
+  }
+};
 
 export const getSavedEstimates = async (): Promise<EstimateData[]> => {
   try {
@@ -22,6 +33,25 @@ export const saveEstimate = async (newEstimate: EstimateData): Promise<void> => 
   } catch (e) {
     console.error('Błąd zapisywania wyceny:', e);
   }
+};
+
+export const addPendingEstimate = async (estimate: EstimateData): Promise<void> => {
+  const pending = await readPendingEstimates();
+  const withoutDuplicate = pending.filter((item) => item.id !== estimate.id);
+  await AsyncStorage.setItem(
+    PENDING_SYNC_STORAGE_KEY,
+    JSON.stringify([estimate, ...withoutDuplicate])
+  );
+};
+
+export const getPendingEstimates = readPendingEstimates;
+
+export const removePendingEstimate = async (estimateId: string): Promise<void> => {
+  const pending = await readPendingEstimates();
+  await AsyncStorage.setItem(
+    PENDING_SYNC_STORAGE_KEY,
+    JSON.stringify(pending.filter((item) => item.id !== estimateId))
+  );
 };
 
 export const deleteEstimate = async (estimateNumber: string): Promise<EstimateData[]> => {

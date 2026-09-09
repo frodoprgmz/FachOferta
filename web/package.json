@@ -2,7 +2,7 @@
   "name": "fach-oferta-web",
   "private": true,
   "scripts": {
-    "build": "echo \"No build step required\""
+    "build": "node scripts/build-admin-config.js"
   },
   "dependencies": {
     "nodemailer": "^7.0.13"
