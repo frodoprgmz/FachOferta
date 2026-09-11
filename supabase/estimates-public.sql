@@ -1,10 +1,20 @@
 -- Dane wyceny zapisane przez aplikację mobilną.
 ALTER TABLE public.estimates
+  ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
   ADD COLUMN IF NOT EXISTS contractor JSONB,
   ADD COLUMN IF NOT EXISTS client JSONB,
   ADD COLUMN IF NOT EXISTS items JSONB,
   ADD COLUMN IF NOT EXISTS advance_percent NUMERIC(5, 2) DEFAULT 0,
   ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE public.estimates ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Dostęp do własnych wycen" ON public.estimates;
+CREATE POLICY "Dostęp do własnych wycen"
+  ON public.estimates
+  FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
 -- Usuń wcześniejszą wersję funkcji, która zakładała, że id ma typ UUID.
 DROP FUNCTION IF EXISTS public.get_public_estimate(UUID);
