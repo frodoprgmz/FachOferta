@@ -46,6 +46,11 @@ CREATE TABLE public.estimates (
   total_net NUMERIC(10, 2) DEFAULT 0.00,
   total_gross NUMERIC(10, 2) DEFAULT 0.00,
   advance_percentage NUMERIC(5, 2) DEFAULT 0.00, -- % zaliczki
+  advance_percent NUMERIC(5, 2) DEFAULT 0.00,
+  contractor JSONB,
+  client JSONB,
+  items JSONB,
+  accepted_at TIMESTAMP WITH TIME ZONE,
   
   signature_url TEXT, -- Link do zapisanego obrazu podpisu
   notes TEXT -- Dodatkowe ustalenia w stopce
@@ -73,6 +78,9 @@ ALTER TABLE public.price_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.estimates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.estimate_items ENABLE ROW LEVEL SECURITY;
 
+DROP FUNCTION IF EXISTS public.get_public_estimate(UUID);
+DROP FUNCTION IF EXISTS public.accept_public_estimate(UUID, TIMESTAMP WITH TIME ZONE);
+
 -- Polityki: Użytkownik ma dostęp TYLKO do swoich danych
 CREATE POLICY "Dostęp do własnego profilu" ON public.profiles FOR ALL USING (auth.uid() = id);
 CREATE POLICY "Dostęp do własnych klientów" ON public.clients FOR ALL USING (auth.uid() = user_id);
@@ -80,3 +88,45 @@ CREATE POLICY "Dostęp do własnego cennika" ON public.price_items FOR ALL USING
 CREATE POLICY "Dostęp do własnych wycen" ON public.estimates FOR ALL USING (auth.uid() = user_id);
 CREATE POLICY "Dostęp do pozycji własnych wycen" ON public.estimate_items FOR ALL 
   USING (EXISTS (SELECT 1 FROM public.estimates WHERE estimates.id = estimate_items.estimate_id AND estimates.user_id = auth.uid()));
+
+-- Publiczne odczytanie pojedynczej wyceny z linku bez ujawniania listy wycen.
+CREATE OR REPLACE FUNCTION public.get_public_estimate(estimate_uuid TEXT)
+RETURNS TABLE (
+  id TEXT,
+  estimate_number TEXT,
+  contractor JSONB,
+  client JSONB,
+  items JSONB,
+  advance_percent NUMERIC,
+  status TEXT,
+  accepted_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE
+)
+LANGUAGE SQL
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT e.id::TEXT, e.estimate_number, e.contractor, e.client, e.items,
+         e.advance_percent, e.status, e.accepted_at, e.created_at
+  FROM public.estimates e
+  WHERE e.id::TEXT = estimate_uuid;
+$$;
+
+CREATE OR REPLACE FUNCTION public.accept_public_estimate(
+  estimate_uuid TEXT,
+  accepted_at_value TIMESTAMP WITH TIME ZONE
+)
+RETURNS VOID
+LANGUAGE SQL
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  UPDATE public.estimates
+  SET status = 'accepted', accepted_at = accepted_at_value
+  WHERE id::TEXT = estimate_uuid;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_public_estimate(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_public_estimate(TEXT) TO anon, authenticated;
+REVOKE ALL ON FUNCTION public.accept_public_estimate(TEXT, TIMESTAMP WITH TIME ZONE) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.accept_public_estimate(TEXT, TIMESTAMP WITH TIME ZONE) TO anon, authenticated;

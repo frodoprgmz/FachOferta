@@ -18,7 +18,7 @@
     <div id="error" class="hidden text-center py-12">
       <div class="text-red-500 text-5xl mb-4">⚠️</div>
       <h2 class="text-xl font-bold text-slate-900 mb-2">Nie znaleziono wyceny</h2>
-      <p class="text-slate-500 text-sm">Link jest nieprawidłowy lub oferta wygasła.</p>
+      <p class="text-slate-500 text-sm">Link jest nieprawidłowy albo wycena nie jest już dostępna.</p>
     </div>
 
     <div id="content" class="hidden">
@@ -95,7 +95,7 @@
       <!-- Sekcja Akceptacji -->
       <div id="action-section" class="border-t border-slate-200 pt-6 text-center">
         <button id="accept-btn" onclick="acceptEstimate()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl shadow-lg transition duration-200 text-base flex items-center justify-center gap-2">
-          <span>🟢</span> Akceptuję wycenę i zamawiam TONIEDZIALA<span>🟢</span>
+          Akceptuję wycenę
         </button>
       </div>
 
@@ -125,11 +125,9 @@
         return;
       }
 
-      const { data, error } = await supabaseClient
-        .from('estimates')
-        .select('*')
-        .eq('id', estimateId)
-        .single();
+      const { data: rows, error } = await supabaseClient
+        .rpc('get_public_estimate', { estimate_uuid: estimateId });
+      const data = rows && rows[0];
 
       if (error || !data) {
         showError();
@@ -204,7 +202,7 @@
       document.getElementById('advance-percent').innerText = advancePercent;
       document.getElementById('advance-amount').innerText = advanceAmount;
 
-      if (data.status === 'ACCEPTED' || data.status === 'ACCEPTED_ONLINE') {
+      if (data.status === 'accepted' || data.status === 'ACCEPTED' || data.status === 'ACCEPTED_ONLINE') {
         showAcceptedState(data.accepted_at);
       }
     }
@@ -268,10 +266,10 @@
       btn.innerText = 'Zapisywanie akceptacji w bazie...';
       const acceptedAt = new Date().toISOString();
 
-      const { error } = await supabaseClient
-        .from('estimates')
-        .update({ status: 'ACCEPTED', accepted_at: acceptedAt })
-        .eq('id', estimateId);
+      const { error } = await supabaseClient.rpc('accept_public_estimate', {
+        estimate_uuid: estimateId,
+        accepted_at_value: acceptedAt,
+      });
 
       if (error) {
         showClientError('E-mail został wysłany, ale wystąpił błąd zapisu w bazie Supabase: ' + error.message);

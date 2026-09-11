@@ -31,6 +31,7 @@ export interface EstimateData {
   client: Client;
   items: EstimateItem[];
   advancePercent: number;
-  status?: 'SENT' | 'ACCEPTED';
+  includeAcceptanceLink?: boolean;
+  status?: 'sent' | 'accepted';
   acceptedAt?: string;
 }

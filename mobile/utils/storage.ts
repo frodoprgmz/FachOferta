@@ -35,6 +35,20 @@ export const saveEstimate = async (newEstimate: EstimateData): Promise<void> => 
   }
 };
 
+export const updateEstimate = async (updatedEstimate: EstimateData): Promise<EstimateData[]> => {
+  try {
+    const existingEstimates = await getSavedEstimates();
+    const updatedEstimates = existingEstimates.map((estimate) =>
+      estimate.id === updatedEstimate.id ? updatedEstimate : estimate
+    );
+    await AsyncStorage.setItem(ESTIMATES_STORAGE_KEY, JSON.stringify(updatedEstimates));
+    return updatedEstimates;
+  } catch (e) {
+    console.error('Błąd aktualizacji wyceny:', e);
+    return [];
+  }
+};
+
 export const addPendingEstimate = async (estimate: EstimateData): Promise<void> => {
   const pending = await readPendingEstimates();
   const withoutDuplicate = pending.filter((item) => item.id !== estimate.id);

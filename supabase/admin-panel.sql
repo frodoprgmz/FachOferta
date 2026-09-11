@@ -113,6 +113,10 @@ BEGIN
     subscription_expires_at = new_expires_at,
     updated_at = NOW()
   WHERE id = target_user_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Profile not found';
+  END IF;
 END;
 $$;
 

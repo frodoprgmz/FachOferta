@@ -12,10 +12,12 @@ import {
   Alert,
   Modal,
   Image,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
+import * as WebBrowser from 'expo-web-browser';
 import { WebView } from 'react-native-webview';
 import { EstimateItem, EstimateData, Contractor } from './types';
 import { generateAndSharePDF, getEstimateHTML } from './utils/pdfGenerator';
@@ -23,6 +25,7 @@ import {
   saveEstimate,
   getSavedEstimates,
   deleteEstimate,
+  updateEstimate,
   addPendingEstimate,
   getPendingEstimates,
   removePendingEstimate,
@@ -41,6 +44,7 @@ export default function App() {
   const [itemQuantity, setItemQuantity] = useState('1');
   const [itemPrice, setItemPrice] = useState('');
   const [advancePercent, setAdvancePercent] = useState('30');
+  const [includeAcceptanceLink, setIncludeAcceptanceLink] = useState(true);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [contractor, setContractor] = useState<Contractor>({
@@ -58,7 +62,9 @@ export default function App() {
   // Stan dla podglądu PDF
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
+  const [previewIsHistory, setPreviewIsHistory] = useState(false);
   const [currentEstimateData, setCurrentEstimateData] = useState<EstimateData | null>(null);
+  const [editingEstimateId, setEditingEstimateId] = useState<string | null>(null);
   const [sessionUser, setSessionUser] = useState<any | null>(null);
   const [subscriptionProfile, setSubscriptionProfile] = useState<any | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -130,15 +136,21 @@ export default function App() {
     });
     const appStateSubscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
+        void refreshCurrentUserProfile();
         void NetInfo.fetch().then((networkState) => syncIfOnline(networkState.isConnected));
       }
     });
+
+    const profileRefreshInterval = setInterval(() => {
+      void refreshCurrentUserProfile();
+    }, 15000);
 
     void NetInfo.fetch().then((networkState) => syncIfOnline(networkState.isConnected));
 
     return () => {
       unsubscribeNetInfo();
       appStateSubscription.remove();
+      clearInterval(profileRefreshInterval);
     };
   }, []);
 
@@ -155,23 +167,43 @@ export default function App() {
 
   const hydrateUserSession = async (user: any) => {
     setSessionUser(user);
+    await refreshUserProfile(user.id);
+  };
+
+  const refreshUserProfile = async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      const { data: existingProfile, error: profileError } = await supabase
         .from('profiles')
-        .upsert(
-          {
-            id: user.id,
-            full_name: user.user_metadata?.full_name || user.user_metadata?.name || user.email,
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (profileError) {
+        throw profileError;
+      }
+
+      let data = existingProfile;
+      if (!data) {
+        const { data: { user } } = await supabase.auth.getUser();
+        const { data: createdProfile, error: createError } = await supabase
+          .from('profiles')
+          .insert({
+            id: userId,
+            full_name: user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email,
             company_name: '',
             subscription_status: 'trial',
             subscription_expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-          },
-          { onConflict: 'id' }
-        )
-        .select()
-        .single();
+          })
+          .select()
+          .single();
 
-      if (!error && data) {
+        if (createError) {
+          throw createError;
+        }
+        data = createdProfile;
+      }
+
+      if (data) {
         setSubscriptionProfile(data);
       }
     } catch (e) {
@@ -179,18 +211,57 @@ export default function App() {
     }
   };
 
+  const refreshCurrentUserProfile = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      await refreshUserProfile(session.user.id);
+    }
+  };
+
   const handleGoogleLogin = async () => {
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: OAUTH_REDIRECT_URI,
-          skipBrowserRedirect: false,
+          skipBrowserRedirect: true,
         },
       });
 
       if (error) {
         Alert.alert('Błąd logowania', error.message);
+        return;
+      }
+
+      if (!data?.url) {
+        Alert.alert('Błąd logowania', 'Supabase nie zwrócił adresu logowania.');
+        return;
+      }
+
+      const result = await WebBrowser.openAuthSessionAsync(data.url, OAUTH_REDIRECT_URI);
+      if (result.type !== 'success' || !result.url) {
+        if (result.type !== 'cancel' && result.type !== 'dismiss') {
+          Alert.alert('Błąd logowania', 'Nie udało się wrócić z logowania do aplikacji.');
+        }
+        return;
+      }
+
+      const callbackUrl = new URL(result.url);
+      const code = callbackUrl.searchParams.get('code');
+      if (!code) {
+        const authError = callbackUrl.searchParams.get('error_description') || callbackUrl.searchParams.get('error');
+        Alert.alert('Błąd logowania', authError || 'Brak kodu autoryzacyjnego w odpowiedzi.');
+        return;
+      }
+
+      const { data: sessionData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+      if (exchangeError) {
+        Alert.alert('Błąd logowania', exchangeError.message);
+        return;
+      }
+
+      if (sessionData.session?.user) {
+        await hydrateUserSession(sessionData.session.user);
       }
     } catch (e) {
       Alert.alert('Błąd logowania', e instanceof Error ? e.message : 'Unknown error');
@@ -201,7 +272,7 @@ export default function App() {
     await supabase.auth.signOut();
     setSessionUser(null);
     setSubscriptionProfile(null);
-    Alert.alert('Wylogowano', 'Sesja Google została zakończona.');
+    Alert.alert('Wylogowano', 'Sesja została zakończona.');
   };
 
   const saveContractorData = async () => {
@@ -254,6 +325,26 @@ export default function App() {
     ]);
   };
 
+  const handleEditHistoryItem = (estimate: EstimateData) => {
+    setClientName(estimate.client.name);
+    setClientPhone(estimate.client.phone);
+    setClientAddress(estimate.client.address);
+    setItems(estimate.items);
+    setAdvancePercent(String(estimate.advancePercent));
+    setIncludeAcceptanceLink(estimate.includeAcceptanceLink !== false);
+    setEditingEstimateId(estimate.id);
+    setIsHistoryOpen(false);
+    Alert.alert('Edycja wyceny', 'Wycena została wczytana. Zmień dane i wybierz „Zapisz wycenę”.');
+  };
+
+  const handleHistoryPreview = (estimate: EstimateData) => {
+    setCurrentEstimateData(estimate);
+    setPreviewHtml(getEstimateHTML(estimate));
+    setPreviewIsHistory(true);
+    setIsHistoryOpen(false);
+    setIsPreviewOpen(true);
+  };
+
   const syncPendingEstimates = async () => {
     if (syncingRef.current) return;
     syncingRef.current = true;
@@ -274,7 +365,7 @@ export default function App() {
             client: estimate.client,
             items: estimate.items,
             advance_percent: estimate.advancePercent,
-            status: estimate.status || 'SENT',
+            status: estimate.status || 'sent',
           },
           { onConflict: 'id' }
         );
@@ -340,7 +431,13 @@ export default function App() {
       return null;
     }
 
-    const estimatedId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    const estimatedId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+          const random = Math.floor(Math.random() * 16);
+          const value = char === 'x' ? random : (random & 0x3) | 0x8;
+          return value.toString(16);
+        });
 
     return {
       id: estimatedId,
@@ -355,7 +452,8 @@ export default function App() {
       },
       items,
       advancePercent: parseFloat(advancePercent) || 0,
-      status: 'SENT',
+      includeAcceptanceLink,
+      status: 'sent',
     };
   };
 
@@ -363,6 +461,15 @@ export default function App() {
     const data = buildEstimateData();
     if (!data) return;
 
+    if (editingEstimateId) {
+      const original = history.find((estimate) => estimate.id === editingEstimateId);
+      data.id = editingEstimateId;
+      if (original) {
+        data.estimateNumber = original.estimateNumber;
+        data.issueDate = original.issueDate;
+      }
+    }
+    setPreviewIsHistory(false);
     setCurrentEstimateData(data);
     setPreviewHtml(getEstimateHTML(data));
     setIsPreviewOpen(true);
@@ -371,7 +478,11 @@ export default function App() {
   const saveAndSendEstimate = async (data: EstimateData) => {
     try {
       // Zapis lokalny jest źródłem prawdy, więc PDF działa także bez internetu.
-      await saveEstimate(data);
+      if (editingEstimateId === data.id) {
+        await updateEstimate(data);
+      } else {
+        await saveEstimate(data);
+      }
 
       if (sessionUser?.id) {
         let syncError: { message: string } | null = null;
@@ -385,7 +496,7 @@ export default function App() {
               client: data.client,
               items: data.items,
               advance_percent: data.advancePercent,
-              status: 'SENT',
+              status: 'sent',
             },
             { onConflict: 'id' }
           );
@@ -411,6 +522,8 @@ export default function App() {
       setClientPhone('');
       setClientAddress('');
       setItems([]);
+      setIncludeAcceptanceLink(true);
+      setEditingEstimateId(null);
     } catch (e) {
       console.error(e);
       Alert.alert('Błąd', 'Nie udało się przetworzyć wyceny.');
@@ -426,12 +539,21 @@ export default function App() {
 
     const data = buildEstimateData();
     if (!data) return;
+    if (editingEstimateId) {
+      const original = history.find((estimate) => estimate.id === editingEstimateId);
+      data.id = editingEstimateId;
+      if (original) {
+        data.estimateNumber = original.estimateNumber;
+        data.issueDate = original.issueDate;
+      }
+    }
     await saveAndSendEstimate(data);
   };
 
   const handleSendFromPreview = async () => {
     if (!currentEstimateData) return;
     setIsPreviewOpen(false);
+    if (previewIsHistory) return;
     await saveAndSendEstimate(currentEstimateData);
   };
 
@@ -439,7 +561,7 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.headerBar}>
-          <View>
+          <View style={styles.headerInfo}>
             <Text style={styles.title}>🛠️ FachOferta</Text>
             <Text style={styles.subtitle}>Szybka wycena u klienta</Text>
             <Text style={styles.authText}>
@@ -447,16 +569,16 @@ export default function App() {
                 ? 'Ładowanie konta...'
                 : sessionUser
                   ? `Zalogowano: ${sessionUser.email}`
-                  : 'Brak konta Google'}
+                  : 'Logowanie: brak konta'}
             </Text>
             <Text style={styles.authStatusText}>
               {getSubscriptionState().isActive ? 'Status: aktywny' : 'Status: wygasły'}
             </Text>
           </View>
-          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+          <View style={styles.headerActions}>
             {!sessionUser ? (
               <TouchableOpacity style={styles.topBtn} onPress={handleGoogleLogin}>
-                <Text style={styles.topBtnText}>🔐 Google</Text>
+                <Text style={styles.topBtnText}>🔐 Logowanie</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity style={styles.topBtn} onPress={handleGoogleLogout}>
@@ -567,6 +689,18 @@ export default function App() {
                 onChangeText={setAdvancePercent}
               />
             </View>
+            <View style={styles.optionRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.optionTitle}>Link do akceptacji online</Text>
+                <Text style={styles.optionHint}>Wyłącz, jeśli klient nie ma zatwierdzać wyceny przez internet.</Text>
+              </View>
+              <Switch
+                value={includeAcceptanceLink}
+                onValueChange={setIncludeAcceptanceLink}
+                trackColor={{ false: '#cbd5e1', true: '#86efac' }}
+                thumbColor={includeAcceptanceLink ? '#16a34a' : '#f8fafc'}
+              />
+            </View>
           </View>
         )}
 
@@ -582,7 +716,7 @@ export default function App() {
             style={[styles.generateButton, { flex: 1.5, backgroundColor: '#16a34a' }]}
             onPress={handleGeneratePDF}
           >
-            <Text style={styles.generateButtonText}>🚀 Wyślij PDF</Text>
+            <Text style={styles.generateButtonText}>Zapisz wycenę</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -591,7 +725,7 @@ export default function App() {
       <Modal visible={isPreviewOpen} animationType="slide">
         <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }}>
           <View style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontWeight: 'bold', fontSize: 16 }}>Podgląd Dokumentu</Text>
+            <Text style={{ fontWeight: 'bold', fontSize: 16 }}>Podgląd wyceny</Text>
             <TouchableOpacity onPress={() => setIsPreviewOpen(false)} style={{ padding: 6 }}>
               <Text style={{ color: '#ef4444', fontWeight: 'bold', fontSize: 16 }}>Zamknij</Text>
             </TouchableOpacity>
@@ -601,7 +735,9 @@ export default function App() {
 
           <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: '#e2e8f0' }}>
             <TouchableOpacity style={styles.saveBtn} onPress={handleSendFromPreview}>
-              <Text style={styles.saveBtnText}>🚀 Zapisz i Wyślij PDF</Text>
+              <Text style={styles.saveBtnText}>
+                {previewIsHistory ? 'Zamknij podgląd' : editingEstimateId ? 'Zapisz zmiany' : 'Zapisz wycenę'}
+              </Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -639,16 +775,22 @@ export default function App() {
                         <Text style={{ fontWeight: 'bold', fontSize: 15 }}>{estTotal.toFixed(2)} PLN brutto</Text>
                         <View style={{ flexDirection: 'row', gap: 10 }}>
                           <TouchableOpacity
+                            style={{ backgroundColor: '#2563eb', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}
+                            onPress={() => handleHistoryPreview(est)}
+                          >
+                            <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 12 }}>Podgląd</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={{ backgroundColor: '#f59e0b', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}
+                            onPress={() => handleEditHistoryItem(est)}
+                          >
+                            <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 12 }}>Edytuj</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
                             style={{ backgroundColor: '#ef4444', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}
                             onPress={() => handleDeleteHistoryItem(est.estimateNumber)}
                           >
                             <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 12 }}>Usuń</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={{ backgroundColor: '#16a34a', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 }}
-                            onPress={() => generateAndSharePDF(est)}
-                          >
-                            <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 12 }}>PDF 📄</Text>
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -752,10 +894,15 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f1f5f9' },
   scroll: { padding: 16 },
   headerBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    width: '100%',
     marginBottom: 20,
+  },
+  headerInfo: { width: '100%', marginBottom: 10 },
+  headerActions: {
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   title: { fontSize: 22, fontWeight: 'bold', color: '#0f172a' },
   subtitle: { fontSize: 12, color: '#64748b' },
@@ -766,6 +913,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderRadius: 8,
+    flexGrow: 1,
+    minWidth: 96,
+    alignItems: 'center',
   },
   topBtnText: { fontSize: 12, fontWeight: '600', color: '#334155' },
   card: {
@@ -790,6 +940,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
   },
   row: { flexDirection: 'row' },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+  },
+  optionTitle: { fontSize: 13, fontWeight: '600', color: '#334155' },
+  optionHint: { fontSize: 11, color: '#64748b', marginTop: 3 },
   addButton: {
     backgroundColor: '#3b82f6',
     padding: 12,

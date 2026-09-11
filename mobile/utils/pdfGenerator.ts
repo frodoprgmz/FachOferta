@@ -7,6 +7,13 @@ const WEB_BASE_URL = 'https://fach-oferta-app.vercel.app';
 
 export const getEstimateHTML = (data: EstimateData): string => {
   const acceptUrl = data.id ? `${WEB_BASE_URL}/?id=${data.id}` : WEB_BASE_URL;
+  const acceptanceHtml = data.includeAcceptanceLink === false ? '' : `
+      <div class="accept-box">
+        <p class="accept-title">🟢 Akceptacja wyceny online</p>
+        <p class="accept-desc">Kliknij poniższy link, aby szybko zaakceptować kosztorys online:</p>
+        <a href="${acceptUrl}" class="accept-link">${acceptUrl}</a>
+      </div>
+  `;
 
   const totalNet = data.items.reduce((sum, item) => sum + item.totalNet, 0);
   const totalVat = totalNet * 0.23;
@@ -120,11 +127,7 @@ export const getEstimateHTML = (data: EstimateData): string => {
         💡 <strong>Warunki płatności:</strong> Wymagana zaliczka ${data.advancePercent}% tj. <strong>${advanceAmount.toFixed(2)} PLN</strong> na konto bankowe.
       </div>
 
-      <div class="accept-box">
-        <p class="accept-title">🟢 Akceptacja wyceny online</p>
-        <p class="accept-desc">Kliknij poniższy link, aby szybko zaakceptować kosztorys online:</p>
-        <a href="${acceptUrl}" class="accept-link">${acceptUrl}</a>
-      </div>
+      ${acceptanceHtml}
 
       <div class="footer">
         Dziękujemy za zaufanie! Dokument wygenerowany w aplikacji FachOferta.
