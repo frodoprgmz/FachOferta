@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
+import { StatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
 import { EstimateItem, EstimateData, Contractor } from './types';
 import { generateAndSharePDF, getEstimateHTML } from './utils/pdfGenerator';
@@ -571,6 +572,7 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar style="dark" />
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.headerBar}>
           <View style={styles.headerInfo}>
@@ -611,12 +613,14 @@ export default function App() {
           <Text style={styles.cardTitle}>👤 Dane Klienta</Text>
           <TextInput
             style={styles.input}
+          placeholderTextColor="#64748b"
             placeholder="Imię i Nazwisko / Firma"
             value={clientName}
             onChangeText={setClientName}
           />
           <TextInput
             style={styles.input}
+          placeholderTextColor="#64748b"
             placeholder="Numer telefonu"
             keyboardType="phone-pad"
             value={clientPhone}
@@ -624,6 +628,7 @@ export default function App() {
           />
           <TextInput
             style={styles.input}
+          placeholderTextColor="#64748b"
             placeholder="Adres inwestycji (miejscowość, ulica)"
             value={clientAddress}
             onChangeText={setClientAddress}
@@ -635,6 +640,7 @@ export default function App() {
           <Text style={styles.cardTitle}>➕ Dodaj Usługę / Materiał</Text>
           <TextInput
             style={styles.input}
+            placeholderTextColor="#64748b"
             placeholder="Nazwa (np. Układanie płyt g-k)"
             value={itemName}
             onChangeText={setItemName}
@@ -642,6 +648,7 @@ export default function App() {
           <View style={styles.row}>
             <TextInput
               style={[styles.input, { flex: 1, marginRight: 8 }]}
+              placeholderTextColor="#64748b"
               placeholder="Ilość"
               keyboardType="numeric"
               value={itemQuantity}
@@ -649,12 +656,14 @@ export default function App() {
             />
             <TextInput
               style={[styles.input, { flex: 1, marginRight: 8 }]}
+              placeholderTextColor="#64748b"
               placeholder="J.m. (m2, szt)"
               value={itemUnit}
               onChangeText={setItemUnit}
             />
             <TextInput
               style={[styles.input, { flex: 1.5 }]}
+              placeholderTextColor="#64748b"
               placeholder="Cena netto (zł)"
               keyboardType="numeric"
               value={itemPrice}
@@ -696,6 +705,7 @@ export default function App() {
               <Text style={{ fontSize: 12, color: '#64748b' }}>Wymagana zaliczka (%):</Text>
               <TextInput
                 style={[styles.input, { marginTop: 4 }]}
+                placeholderTextColor="#64748b"
                 keyboardType="numeric"
                 value={advancePercent}
                 onChangeText={setAdvancePercent}
@@ -737,7 +747,7 @@ export default function App() {
       <Modal visible={isPreviewOpen} animationType="slide">
         <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }}>
           <View style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontWeight: 'bold', fontSize: 16 }}>Podgląd wyceny</Text>
+            <Text style={{ fontWeight: 'bold', fontSize: 16, color: '#0f172a' }}>Podgląd wyceny</Text>
             <TouchableOpacity onPress={() => setIsPreviewOpen(false)} style={{ padding: 6 }}>
               <Text style={{ color: '#ef4444', fontWeight: 'bold', fontSize: 16 }}>Zamknij</Text>
             </TouchableOpacity>
@@ -760,7 +770,7 @@ export default function App() {
         <SafeAreaView style={{ flex: 1, backgroundColor: '#f8fafc' }}>
           <View style={{ padding: 20, flex: 1 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
-              <Text style={{ fontSize: 20, fontWeight: 'bold' }}>📜 Historia Wycen</Text>
+              <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#0f172a' }}>📜 Historia Wycen</Text>
               <TouchableOpacity onPress={() => setIsHistoryOpen(false)}>
                 <Text style={{ color: '#2563eb', fontWeight: 'bold', fontSize: 16 }}>Zamknij</Text>
               </TouchableOpacity>
@@ -784,7 +794,7 @@ export default function App() {
                       <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>{est.client.address || 'Brak adresu'}</Text>
 
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 10 }}>
-                        <Text style={{ fontWeight: 'bold', fontSize: 15 }}>{estTotal.toFixed(2)} PLN brutto</Text>
+                        <Text style={{ fontWeight: 'bold', fontSize: 15, color: '#0f172a' }}>{estTotal.toFixed(2)} PLN brutto</Text>
                         <View style={{ flexDirection: 'row', gap: 10 }}>
                           <TouchableOpacity
                             style={{ backgroundColor: '#2563eb', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}
@@ -819,7 +829,7 @@ export default function App() {
       <Modal visible={isSettingsOpen} animationType="slide">
         <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }}>
           <ScrollView contentContainerStyle={{ padding: 20 }}>
-            <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 6 }}>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#0f172a', marginBottom: 6 }}>
               ⚙️ Ustawienia Twojej Firmy
             </Text>
             <Text style={{ fontSize: 13, color: '#64748b', marginBottom: 20 }}>
@@ -950,6 +960,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 10,
     backgroundColor: '#f8fafc',
+    color: '#0f172a',
   },
   row: { flexDirection: 'row' },
   optionRow: {
