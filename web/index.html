@@ -248,7 +248,13 @@
           }),
         });
 
-        const resData = await response.json();
+        const responseText = await response.text();
+        let resData = {};
+        try {
+          resData = responseText ? JSON.parse(responseText) : {};
+        } catch {
+          resData = { message: responseText || 'Serwer zwrócił pustą odpowiedź.' };
+        }
 
         if (!response.ok) {
           // WYJEBUJEMY BŁĘDEM SERWERA NA STRONIE

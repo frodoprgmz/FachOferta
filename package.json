@@ -3,5 +3,8 @@
   "private": true,
   "scripts": {
     "build": "echo \"Root package is not the app; deploy the /web directory in Vercel\""
+  },
+  "dependencies": {
+    "nodemailer": "^7.0.13"
   }
 }
