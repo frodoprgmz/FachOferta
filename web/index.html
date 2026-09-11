@@ -130,7 +130,7 @@
       const data = rows && rows[0];
 
       if (error || !data) {
-        showError();
+        showError(error ? `Nie udało się wczytać wyceny: ${error.message}` : 'Nie znaleziono wyceny dla tego linku.');
         return;
       }
 
@@ -138,9 +138,12 @@
       renderEstimate(data);
     }
 
-    function showError() {
+    function showError(message) {
       document.getElementById('loading').classList.add('hidden');
       document.getElementById('error').classList.remove('hidden');
+      if (message) {
+        document.querySelector('#error p').innerText = message;
+      }
     }
 
     function parseData(field) {

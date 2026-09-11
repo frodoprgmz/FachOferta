@@ -484,8 +484,10 @@ export default function App() {
         await saveEstimate(data);
       }
 
+      let cloudSaved = false;
+      let syncError: { message: string } | null = null;
+
       if (sessionUser?.id) {
-        let syncError: { message: string } | null = null;
         try {
           const { error } = await supabase.from('estimates').upsert(
             {
@@ -509,13 +511,23 @@ export default function App() {
           console.warn('Wycena czeka na synchronizację:', syncError.message);
           await addPendingEstimate(data);
         } else {
+          cloudSaved = true;
           console.log('✅ Wycena zapisana w chmurze Supabase!');
           await removePendingEstimate(data.id);
         }
       }
 
-      // Generowanie PDF z linkiem, który będzie aktywny po synchronizacji.
-      await generateAndSharePDF(data);
+      if (data.includeAcceptanceLink && !cloudSaved) {
+        Alert.alert(
+          'Link nie został dodany',
+          syncError
+            ? `Wycena nie zapisała się online: ${syncError.message}`
+            : 'Zaloguj się, aby zapisać wycenę online i wygenerować działający link.'
+        );
+        await generateAndSharePDF({ ...data, includeAcceptanceLink: false });
+      } else {
+        await generateAndSharePDF(data);
+      }
 
       // Czyszczenie pól formularza
       setClientName('');
